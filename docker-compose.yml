@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  openlane-fastapi:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: openlane-fastapi
+    ports:
+      - "8000:8000"  # Expose FastAPI on port 8000
+    volumes:
+      - .:/app  # Mount the current directory into the container (optional for development)
+    networks:
+      - openlane-network
+
+networks:
+  openlane-network:
+    driver: bridge
