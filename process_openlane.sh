@@ -5,9 +5,12 @@ if [ ! -d "openlane2" ]; then
     git clone https://github.com/efabless/openlane2
 fi
 cd openlane2 || { echo "Failed to navigate to OpenLane directory"; exit 1; }
+
 mkdir designs
-cp -r /home/dell/spm designs
+cp -r /app/spm designs
 NEW_FOLDER="design_$(date +%Y%m%d_%H%M%S)"
+chmod -R 777 designs
+chown -R 1000:1000 designs
 mkdir designs/"$NEW_FOLDER"
 echo "$NEW_FOLDER" > designs/info.txt
 chmod -R 777 designs/"$NEW_FOLDER"
