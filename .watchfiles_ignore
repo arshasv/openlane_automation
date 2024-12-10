@@ -1,4 +1,4 @@
 openlane2/
 *.pyc
 __pycache__/
-
+spm/

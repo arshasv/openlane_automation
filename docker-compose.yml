@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: openlane-fastapi
     ports:
-      - "8000:8000"  # Expose FastAPI on port 8000
+      - "5000:5000"  # Expose FastAPI on port 5000
     volumes:
       - .:/app  # Mount the current directory into the container (optional for development)
     networks:
