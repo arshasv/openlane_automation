@@ -7,7 +7,7 @@ fi
 cd openlane2 || { echo "Failed to navigate to OpenLane directory"; exit 1; }
 
 mkdir designs
-cp -r /app/spm designs
+cp -r /home/dell/Desktop/Arsha/verilog-code-gen-project/openlane_automation/spm designs
 NEW_FOLDER="design_$(date +%Y%m%d_%H%M%S)"
 chmod -R 777 designs
 chown -R 1000:1000 designs
