@@ -27,7 +27,7 @@ COPY spm /app/spm
 # Install Python dependencies (FastAPI, Uvicorn)
 # Copy and install Python dependencies
 COPY requirements.txt /app/
-RUN pip install --no-cache-dir fastapi uvicorn
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Ensure the shell script is executable
 RUN chmod +x /app/process_openlane.sh
