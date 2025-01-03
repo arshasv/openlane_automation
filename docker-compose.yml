@@ -10,6 +10,26 @@ services:
       - "5000:5000"  # Expose FastAPI on port 5000
     volumes:
       - .:/app  # Mount the current directory into the container (optional for development)
+    environment:
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - BLOB_CONTAINER_NAME=${BLOB_CONTAINER_NAME}
+      - RABBITMQ_HOST=rabbitmq  # Use RabbitMQ service name as hostname
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_QUEUE=verilog_queue
+    depends_on:
+      - rabbitmq
+    networks:
+      - openlane-network
+
+  rabbitmq:
+    image: rabbitmq:3-management  # Includes RabbitMQ with a management UI
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"  # RabbitMQ messaging port
+      - "15672:15672"  # RabbitMQ management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
     networks:
       - openlane-network
 

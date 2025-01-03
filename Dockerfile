@@ -35,5 +35,10 @@ RUN chmod +x /app/process_openlane.sh
 # Expose the port the app runs on
 EXPOSE 5000
 
+# Environment variables for RabbitMQ
+ENV RABBITMQ_HOST=localhost
+ENV RABBITMQ_PORT=5672
+ENV QUEUE_NAME=verilog_processing
+
 # Run the FastAPI application with Uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]

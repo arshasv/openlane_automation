@@ -2,6 +2,7 @@ import subprocess
 import os
 import zipfile
 import uuid
+import pika
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from azure.storage.blob import BlobServiceClient
@@ -10,7 +11,6 @@ import shutil
 
 # Load environment variables from .env file
 load_dotenv()
-
 
 # FastAPI app instance
 app = FastAPI()
@@ -28,6 +28,29 @@ SCRIPT_PATH = "./process_openlane.sh"
 # Azure Blob Storage details
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 BLOB_CONTAINER_NAME = os.getenv("BLOB_CONTAINER_NAME")
+
+# RabbitMQ connection details
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", 5672))
+RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "verilog_queue")
+
+# Function to publish messages to RabbitMQ
+def publish_to_rabbitmq(message: dict):
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT))
+        channel = connection.channel()
+        channel.queue_declare(queue=RABBITMQ_QUEUE, durable=True)
+        
+        channel.basic_publish(
+            exchange="",
+            routing_key=RABBITMQ_QUEUE,
+            body=str(message),
+            properties=pika.BasicProperties(delivery_mode=2)  # Make message persistent
+        )
+        connection.close()
+        print(f"Message published to RabbitMQ: {message}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to publish to RabbitMQ: {str(e)}")
 
 # Function to execute the shell script
 def run_shell_script(verilog_url: str):
@@ -80,6 +103,16 @@ def upload_to_azure_blob(file_path: str):
 async def run_openlane(request: VerilogRequest):
     try:
         output = run_shell_script(request.verilog_url)
+        
+        # Publish a message to RabbitMQ
+        message = {
+            "type": "openlane_process",
+            "verilog_url": request.verilog_url,
+            "status": "completed",
+            "output": output
+        }
+        publish_to_rabbitmq(message)
+
         return {"message": "OpenLane flow completed successfully", "output": output}
     except HTTPException as e:
         raise e
@@ -99,6 +132,15 @@ async def upload_to_blob(request: UploadRequest):
 
         # Clean up zip file after upload
         os.remove(zip_file_path)
+
+        # Publish a message to RabbitMQ
+        message = {
+            "type": "blob_upload",
+            "design_folder": request.design_folder,
+            "blob_url": blob_url,
+            "status": "uploaded"
+        }
+        publish_to_rabbitmq(message)
 
         return {"message": "Folder zipped and uploaded successfully", "blob_url": blob_url}
     except HTTPException as e:
