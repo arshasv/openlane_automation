@@ -19,12 +19,12 @@ cp designs/spm/config.json designs/spm/pin_order.cfg designs/"$NEW_FOLDER"
 mkdir designs/"$NEW_FOLDER"/src
 cp designs/spm/src/spm.sdc designs/"$NEW_FOLDER"/src
 
-if [ -z "$VERILOG_URL" ]; then
+if [ -z "$BLOB_URL" ]; then
     echo "Error: No Verilog URL provided."
     exit 1
 fi
 
-wget "$VERILOG_URL" -O designs/"$NEW_FOLDER"/src/spm.v || { echo "Failed to download Verilog file"; exit 1; }
+wget "$BLOB_URL" -O designs/"$NEW_FOLDER"/src/spm.v || { echo "Failed to download Verilog file"; exit 1; }
 
 # Enter Nix shell and run OpenLane flow
 nix-shell --command "openlane designs/$NEW_FOLDER/config.json" || { echo "OpenLane flow failed"; exit 1; }

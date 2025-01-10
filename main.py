@@ -11,13 +11,12 @@ import shutil
 # Load environment variables from .env file
 load_dotenv()
 
-
 # FastAPI app instance
 app = FastAPI()
 
 # Pydantic model for input validation
 class VerilogRequest(BaseModel):
-    verilog_url: str
+    blob_url: str  # Changed from verilog_url to blob_url
 
 class UploadRequest(BaseModel):
     design_folder: str
@@ -30,9 +29,9 @@ AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 BLOB_CONTAINER_NAME = os.getenv("BLOB_CONTAINER_NAME")
 
 # Function to execute the shell script
-def run_shell_script(verilog_url: str):
+def run_shell_script(blob_url: str):  # Changed parameter name
     try:
-        os.environ['VERILOG_URL'] = verilog_url
+        os.environ['BLOB_URL'] = blob_url  # Changed environment variable name
         
         result = subprocess.run(
             ["bash", SCRIPT_PATH],
@@ -76,10 +75,10 @@ def upload_to_azure_blob(file_path: str):
         raise HTTPException(status_code=500, detail=f"Failed to upload file to Azure Blob Storage: {str(e)}")
 
 # API endpoint to trigger OpenLane process
-@app.post("/run_openlane")
+@app.post("/run_openlane/")  # Added trailing slash
 async def run_openlane(request: VerilogRequest):
     try:
-        output = run_shell_script(request.verilog_url)
+        output = run_shell_script(request.blob_url)  # Changed to blob_url
         return {"message": "OpenLane flow completed successfully", "output": output}
     except HTTPException as e:
         raise e
@@ -87,7 +86,7 @@ async def run_openlane(request: VerilogRequest):
         raise HTTPException(status_code=500, detail=f"Failed to run OpenLane: {str(e)}")
 
 # API endpoint to zip and upload a folder to Azure Blob Storage
-@app.post("/upload_to_blob")
+@app.post("/upload_to_blob/")  # Added trailing slash
 async def upload_to_blob(request: UploadRequest):
     try:
         design_folder_path = f"openlane2/designs/{request.design_folder}"
