@@ -16,6 +16,9 @@ services:
       - RABBITMQ_HOST=rabbitmq  # Use RabbitMQ service name as hostname
       - RABBITMQ_PORT=5672
       - RABBITMQ_QUEUE=verilog_queue
+      - RABBITMQ_USER=user
+      - RABBITMQ_PASSWORD=password
+
     depends_on:
       - rabbitmq
     networks:

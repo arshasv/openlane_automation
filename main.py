@@ -3,6 +3,7 @@ import os
 import zipfile
 import uuid
 import pika
+import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from azure.storage.blob import BlobServiceClient
@@ -37,26 +38,30 @@ RABBITMQ_QUEUE = os.getenv("RABBITMQ_QUEUE", "verilog_queue")
 # Function to publish messages to RabbitMQ
 def publish_to_rabbitmq(message: dict):
     try:
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT))
+        credentials = pika.PlainCredentials(os.getenv("RABBITMQ_USER"), os.getenv("RABBITMQ_PASSWORD"))
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host=RABBITMQ_HOST, port=RABBITMQ_PORT, credentials=credentials)
+        )
         channel = connection.channel()
         channel.queue_declare(queue=RABBITMQ_QUEUE, durable=True)
-        
+
         channel.basic_publish(
             exchange="",
             routing_key=RABBITMQ_QUEUE,
             body=str(message),
-            properties=pika.BasicProperties(delivery_mode=2)  # Make message persistent
+            properties=pika.BasicProperties(delivery_mode=2)
         )
         connection.close()
         print(f"Message published to RabbitMQ: {message}")
     except Exception as e:
+        print(f"RabbitMQ Connection Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to publish to RabbitMQ: {str(e)}")
 
 # Function to execute the shell script
 def run_shell_script(verilog_url: str):
     try:
         os.environ['VERILOG_URL'] = verilog_url
-        
+
         result = subprocess.run(
             ["bash", SCRIPT_PATH],
             stdout=subprocess.PIPE,
@@ -67,7 +72,20 @@ def run_shell_script(verilog_url: str):
         if result.returncode != 0:
             raise Exception(f"Shell script failed: {result.stderr}")
 
-        return result.stdout
+        # Extract design folder name from the script output
+        match = re.search(r"design_(\d{8}_\d{6})", result.stdout)
+        if not match:
+            raise Exception("Design folder name not found in the script output")
+
+        design_folder = f"design_{match.group(1)}"
+        runs_path = f"openlane2/designs/{design_folder}/runs"
+
+        # Check if the 'runs' directory exists
+        if os.path.exists(runs_path):
+            return {"message": "OpenLane flow completed successfully", "output": f"OpenLane flow completed successfully for {design_folder}"}
+        else:
+            raise Exception(f"OpenLane compilation failed: '{runs_path}' not found")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -90,7 +108,7 @@ def upload_to_azure_blob(file_path: str):
     try:
         blob_service_client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
         blob_client = blob_service_client.get_blob_client(container=BLOB_CONTAINER_NAME, blob=os.path.basename(file_path))
-        
+
         with open(file_path, "rb") as data:
             blob_client.upload_blob(data, overwrite=True)
 
@@ -100,24 +118,8 @@ def upload_to_azure_blob(file_path: str):
 
 # API endpoint to trigger OpenLane process
 @app.post("/run_openlane")
-async def run_openlane(request: VerilogRequest):
-    try:
-        output = run_shell_script(request.verilog_url)
-        
-        # Publish a message to RabbitMQ
-        message = {
-            "type": "openlane_process",
-            "verilog_url": request.verilog_url,
-            "status": "completed",
-            "output": output
-        }
-        publish_to_rabbitmq(message)
-
-        return {"message": "OpenLane flow completed successfully", "output": output}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to run OpenLane: {str(e)}")
+def run_openlane(request: VerilogRequest):
+    return run_shell_script(request.verilog_url)
 
 # API endpoint to zip and upload a folder to Azure Blob Storage
 @app.post("/upload_to_blob")
@@ -126,7 +128,7 @@ async def upload_to_blob(request: UploadRequest):
         design_folder_path = f"openlane2/designs/{request.design_folder}"
         if not os.path.exists(design_folder_path):
             raise HTTPException(status_code=404, detail=f"Design folder not found: {design_folder_path}")
-        
+
         zip_file_path = zip_folder(design_folder_path)
         blob_url = upload_to_azure_blob(zip_file_path)
 
