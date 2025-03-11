@@ -4,6 +4,7 @@ import zipfile
 import uuid
 import pika
 import re
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from azure.storage.blob import BlobServiceClient
@@ -13,12 +14,15 @@ import shutil
 # Load environment variables from .env file
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 # FastAPI app instance
 app = FastAPI()
 
 # Pydantic model for input validation
 class VerilogRequest(BaseModel):
-    verilog_url: str
+    blob_url: str
 
 class UploadRequest(BaseModel):
     design_folder: str
@@ -52,16 +56,16 @@ def publish_to_rabbitmq(message: dict):
             properties=pika.BasicProperties(delivery_mode=2)
         )
         connection.close()
-        print(f"Message published to RabbitMQ: {message}")
+        logging.info(f"Message published to RabbitMQ: {message}")
     except Exception as e:
-        print(f"RabbitMQ Connection Error: {str(e)}")
+        logging.error(f"RabbitMQ Connection Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to publish to RabbitMQ: {str(e)}")
 
 # Function to execute the shell script
-def run_shell_script(verilog_url: str):
+def run_shell_script(blob_url: str):
     try:
-        os.environ['VERILOG_URL'] = verilog_url
-
+        os.environ['BLOB_URL'] = blob_url
+        
         result = subprocess.run(
             ["bash", SCRIPT_PATH],
             stdout=subprocess.PIPE,
@@ -70,24 +74,40 @@ def run_shell_script(verilog_url: str):
         )
 
         if result.returncode != 0:
-            raise Exception(f"Shell script failed: {result.stderr}")
+            error_message = f"Shell script failed: {result.stderr}"
+            logging.error(error_message)
+            raise Exception(error_message)
 
         # Extract design folder name from the script output
         match = re.search(r"design_(\d{8}_\d{6})", result.stdout)
         if not match:
-            raise Exception("Design folder name not found in the script output")
+            error_message = "Design folder name not found in the script output"
+            logging.error(error_message)
+            raise Exception(error_message)
 
         design_folder = f"design_{match.group(1)}"
         runs_path = f"openlane2/designs/{design_folder}/runs"
 
         # Check if the 'runs' directory exists
         if os.path.exists(runs_path):
-            return {"message": "OpenLane flow completed successfully", "output": f"OpenLane flow completed successfully for {design_folder}"}
+            success_message = {
+                "status": "success",
+                "message": "OpenLane flow completed successfully",
+                "output": f"OpenLane flow completed successfully for {design_folder}"
+            }
+            logging.info(success_message)
+            publish_to_rabbitmq(success_message)
+            return success_message
         else:
-            raise Exception(f"OpenLane compilation failed: '{runs_path}' not found")
-
+            error_message = f"OpenLane compilation failed: '{runs_path}' not found"
+            logging.error(error_message)
+            raise Exception(error_message)
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_response = {"status": "error", "message": "OpenLane execution failed", "error": str(e)}
+        logging.error(error_response)
+        publish_to_rabbitmq(error_response)
+        raise HTTPException(status_code=500, detail=error_response)
 
 # Function to zip a folder
 def zip_folder(folder_path: str):
@@ -101,6 +121,7 @@ def zip_folder(folder_path: str):
                     zipf.write(file_path, arcname)
         return zip_filename
     except Exception as e:
+        logging.error(f"Failed to zip folder: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to zip folder: {str(e)}")
 
 # Function to upload a file to Azure Blob Storage
@@ -112,14 +133,17 @@ def upload_to_azure_blob(file_path: str):
         with open(file_path, "rb") as data:
             blob_client.upload_blob(data, overwrite=True)
 
-        return f"File uploaded to Azure Blob Storage: {blob_client.url}"
+        success_message = f"File uploaded to Azure Blob Storage: {blob_client.url}"
+        logging.info(success_message)
+        return success_message
     except Exception as e:
+        logging.error(f"Failed to upload file to Azure Blob Storage: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload file to Azure Blob Storage: {str(e)}")
 
 # API endpoint to trigger OpenLane process
 @app.post("/run_openlane")
 def run_openlane(request: VerilogRequest):
-    return run_shell_script(request.verilog_url)
+    return run_shell_script(request.blob_url)
 
 # API endpoint to zip and upload a folder to Azure Blob Storage
 @app.post("/upload_to_blob")
@@ -127,25 +151,27 @@ async def upload_to_blob(request: UploadRequest):
     try:
         design_folder_path = f"openlane2/designs/{request.design_folder}"
         if not os.path.exists(design_folder_path):
-            raise HTTPException(status_code=404, detail=f"Design folder not found: {design_folder_path}")
+            error_message = f"Design folder not found: {design_folder_path}"
+            logging.error(error_message)
+            raise HTTPException(status_code=404, detail=error_message)
 
         zip_file_path = zip_folder(design_folder_path)
         blob_url = upload_to_azure_blob(zip_file_path)
 
-        # Clean up zip file after upload
         os.remove(zip_file_path)
 
-        # Publish a message to RabbitMQ
         message = {
             "type": "blob_upload",
             "design_folder": request.design_folder,
             "blob_url": blob_url,
             "status": "uploaded"
         }
+        logging.info(message)
         publish_to_rabbitmq(message)
 
         return {"message": "Folder zipped and uploaded successfully", "blob_url": blob_url}
     except HTTPException as e:
         raise e
     except Exception as e:
+        logging.error(f"Failed to upload folder: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload folder: {str(e)}")
