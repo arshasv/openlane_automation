@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     dos2unix \
     tcl \
     tcllib \
+    zip \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 

@@ -18,9 +18,9 @@ services:
       - RABBITMQ_QUEUE=verilog_queue
       - RABBITMQ_USER=user
       - RABBITMQ_PASSWORD=password
-
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy  # Waits for RabbitMQ to be ready
     networks:
       - openlane-network
 
@@ -35,6 +35,11 @@ services:
       RABBITMQ_DEFAULT_PASS: password
     networks:
       - openlane-network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   openlane-network:
