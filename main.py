@@ -6,9 +6,13 @@ import re
 import logging
 import time
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
 from pydantic import BaseModel
 from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
+from typing import List, Dict
 
 # Load environment variables from .env file
 load_dotenv()
@@ -20,8 +24,20 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 app = FastAPI()
 
 # Pydantic models
+class PinConfiguration(BaseModel):
+    N: List[str]
+    S: List[str]
+    E: List[str]
+    W: List[str]
+
 class VerilogRequest(BaseModel):
     blob_url: str
+    design_name: str
+    clock_port: str
+    clock_period: float
+    die_area: str
+    pin_configuration: PinConfiguration
+
 
 class UploadRequest(BaseModel):
     design_folder: str
@@ -64,27 +80,54 @@ def publish_to_rabbitmq(message: dict):
 
 
 # Function to execute the shell script
-def run_shell_script(blob_url: str):
+def run_shell_script(request: VerilogRequest):
     try:
-        os.environ['BLOB_URL'] = blob_url
+        os.environ['BLOB_URL'] = request.blob_url
+        os.environ['DESIGN_NAME'] = request.design_name
+        os.environ['CLOCK_PORT'] = request.clock_port
+        os.environ['CLOCK_PERIOD'] = str(request.clock_period)
+        os.environ['DIE_AREA'] = request.die_area
+
+        # Set pin configuration as comma-separated values for each side
+        os.environ['PINS_N'] = ','.join(request.pin_configuration.N)
+        os.environ['PINS_S'] = ','.join(request.pin_configuration.S)
+        os.environ['PINS_E'] = ','.join(request.pin_configuration.E)
+        os.environ['PINS_W'] = ','.join(request.pin_configuration.W)
+
+        # Log the command being executed
+        command = [
+            "bash", SCRIPT_PATH,
+            request.design_name,
+            str(request.clock_period),
+            request.clock_port,
+            ','.join(request.pin_configuration.N),
+            ','.join(request.pin_configuration.S),
+            ','.join(request.pin_configuration.E),
+            ','.join(request.pin_configuration.W),
+            request.die_area
+        ]
+        logging.info(f"Executing command: {' '.join(command)}")
 
         result = subprocess.run(
-            ["bash", SCRIPT_PATH],
+            command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
         )
 
+        # Log the output for debugging
+        logging.info(f"Shell script stdout: {result.stdout}")
+        logging.error(f"Shell script stderr: {result.stderr}")
+
         if result.returncode != 0:
-            logging.error(f"Shell script failed: {result.stderr}")
             raise Exception(f"Shell script failed: {result.stderr}")
 
         logging.info("Shell script completed successfully")
         return {
-                "status": "success",
-                "message": "OpenLane flow completed successfully",
-            }
-    
+            "status": "success",
+            "message": "OpenLane flow completed successfully",
+        }
+
     except Exception as e:
         logging.error(f"OpenLane execution failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"OpenLane execution failed: {str(e)}")
@@ -123,10 +166,13 @@ def upload_to_azure_blob(file_path: str):
         raise HTTPException(status_code=500, detail=f"Failed to upload file to Azure Blob Storage: {str(e)}")
 
 
+
+
+
 # API endpoint to trigger OpenLane process
 @app.post("/run_openlane")
 def run_openlane(request: VerilogRequest):
-    return run_shell_script(request.blob_url)
+    return run_shell_script(request)
 
 
 # API endpoint to zip and upload a folder to Azure Blob Storage
@@ -160,3 +206,4 @@ async def upload_to_blob(request: UploadRequest):
     except Exception as e:
         logging.error(f"Failed to upload folder: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to upload folder: {str(e)}")
+        
