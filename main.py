@@ -35,7 +35,7 @@ class VerilogRequest(BaseModel):
     design_name: str
     clock_port: str
     clock_period: float
-    die_area: str
+
     pin_configuration: PinConfiguration
 
 
@@ -86,7 +86,6 @@ def run_shell_script(request: VerilogRequest):
         os.environ['DESIGN_NAME'] = request.design_name
         os.environ['CLOCK_PORT'] = request.clock_port
         os.environ['CLOCK_PERIOD'] = str(request.clock_period)
-        os.environ['DIE_AREA'] = request.die_area
 
         # Set pin configuration as comma-separated values for each side
         os.environ['PINS_N'] = ','.join(request.pin_configuration.N)
@@ -104,7 +103,6 @@ def run_shell_script(request: VerilogRequest):
             ','.join(request.pin_configuration.S),
             ','.join(request.pin_configuration.E),
             ','.join(request.pin_configuration.W),
-            request.die_area
         ]
         logging.info(f"Executing command: {' '.join(command)}")
 
@@ -190,7 +188,7 @@ async def upload_to_blob(request: UploadRequest):
         os.remove(zip_file_path)
 
         message = {
-            "openlane_flow": "complted",
+            "openlane_flow": "completed",
             "design_folder": request.design_folder,
             "blob_url": blob_url
         }

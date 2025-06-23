@@ -1,2 +1,16 @@
+
 .env
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore log files
+*.log
+
+# Ignore the logs directory
+logs/
+openlane2/
+
+# Ignore config file in root
+/config.json
 
