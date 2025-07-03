@@ -1,11 +1,12 @@
 # Use an official Python runtime as a parent image
-FROM python:3.9-slim
+FROM python:3.11-slim
+
 
 # Set the working directory
 WORKDIR /app
 
 # Install system dependencies required by the shell script
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y gcc \
     wget \
     git \
     curl \
@@ -41,16 +42,16 @@ RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
 SHELL ["/bin/bash", "-c"]
 
 # Copy the shell script and Python code into the container
-COPY process_openlane.sh /app/process_openlane.sh
+COPY process_openlane.py /app/process_openlane.py
 COPY main.py /app/main.py
 COPY app.py /app/app.py
 COPY config.py /app/config.py
 
 # Convert script to Unix format (only if necessary)
-RUN dos2unix /app/process_openlane.sh || true
+RUN dos2unix /app/process_openlane.py || true
 
 # Ensure the shell script is executable
-RUN chmod +x /app/process_openlane.sh
+RUN chmod +x /app/process_openlane.py
 
 # Create required directories and fix ownership
 RUN mkdir -p /app/openlane2 /app/designs && \

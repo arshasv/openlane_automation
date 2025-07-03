@@ -16,8 +16,8 @@ services:
       - RABBITMQ_HOST=rabbitmq  # Use RabbitMQ service name as hostname
       - RABBITMQ_PORT=5672
       - RABBITMQ_QUEUE=verilog_queue
-      - RABBITMQ_USER=user
-      - RABBITMQ_PASSWORD=password
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
     depends_on:
       rabbitmq:
         condition: service_healthy  # Waits for RabbitMQ to be ready
@@ -31,8 +31,8 @@ services:
       - "5672:5672"  # RabbitMQ messaging port
       - "15672:15672"  # RabbitMQ management UI
     environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
     networks:
       - openlane-network
     healthcheck:
