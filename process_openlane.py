@@ -30,10 +30,19 @@ def generate_openroad_files(design_name, clock_period, clock_port, north_pins, s
 
     generate_pin_order_file(north_pins, south_pins, east_pins, west_pins, design_name, output_base_dir)
 
+    # Generate SDC file content based on clock period
     with open(sdc_file, "w") as f:
-        f.write("set_units -time ns\n")
-        f.write(f"create_clock [get_ports {clock_port}] -name core_clock -period {clock_period}\n")
+        if float(clock_period) == 0:
+            # SDC constraints for combinational design (no clock)
+            f.write("# SDC constraints for combinational design (no clock)\n")
+            f.write("set_input_delay 0.1 [get_ports in*]\n")
+            f.write("set_output_delay 0.1 [get_ports out*]\n")
+        else:
+            # SDC constraints for sequential design (with clock)
+            f.write("set_units -time ns\n")
+            f.write(f"create_clock [get_ports {clock_port}] -name core_clock -period {clock_period}\n")
 
+    # Generate configuration JSON
     config = {
         "//": "Basics",
         "DESIGN_NAME": design_name,
@@ -74,18 +83,19 @@ def generate_openroad_files(design_name, clock_period, clock_port, north_pins, s
         json.dump(config, f, indent=4)
     print(f"Generated configuration JSON for {design_name}")
 
-def trigger_api_to_upload_blob(design_name):
+def trigger_api_to_upload_blob(design_name, status):
     """Trigger API to upload design folder to Azure Blob Storage."""
     api_url = "http://localhost:5000/upload_to_blob/"
-    json_body = {"design_folder": design_name}
+    json_body = {"design_folder": design_name, "status": status}
 
-    print("Triggering API to upload design folder to Blob Storage...")
+    print(f"Triggering API to upload design folder to Blob Storage with status '{status}'...")
     response = requests.post(api_url, json=json_body, allow_redirects=True)
     if response.status_code == 200:
         print("API triggered successfully!")
     else:
         print(f"Failed to trigger API: {response.status_code}")
         sys.exit(1)
+
 def main():
     # Check arguments
     if len(sys.argv) < 4:
@@ -151,16 +161,20 @@ def main():
     # Start log_monitor.py in the background
     log_monitor_proc = subprocess.Popen(["python3", "/app/log_monitor.py"])
 
-    # Run OpenLane flow
-    subprocess.run(["nix-shell", "--command", f"openlane designs/{design_name}/config.json"], check=True)
+    try:
+        # Run OpenLane flow
+        subprocess.run(["nix-shell", "--command", f"openlane designs/{design_name}/config.json"], check=True)
+        print(f"OpenLane flow completed successfully for design {design_name}")
+        status = "success"
+    except subprocess.CalledProcessError as e:
+        print(f"OpenLane flow failed with error: {e}")
+        status = "failure"
+    finally:
+        # Ensure log_monitor is terminated
+        log_monitor_proc.terminate()
 
-    # Kill the log monitor after the flow completes
-    log_monitor_proc.terminate()
-
-    print(f"OpenLane flow completed successfully for design {design_name}")
-
-    # Trigger API to upload design folder to Azure Blob Storage
-    trigger_api_to_upload_blob(design_name)
+        # Trigger API to upload design folder to Azure Blob Storage
+        trigger_api_to_upload_blob(design_name, status)
 
 if __name__ == "__main__":
     main()

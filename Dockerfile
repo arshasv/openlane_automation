@@ -44,8 +44,6 @@ SHELL ["/bin/bash", "-c"]
 # Copy the shell script and Python code into the container
 COPY process_openlane.py /app/process_openlane.py
 COPY main.py /app/main.py
-COPY app.py /app/app.py
-COPY config.py /app/config.py
 
 # Convert script to Unix format (only if necessary)
 RUN dos2unix /app/process_openlane.py || true
